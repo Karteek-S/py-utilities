@@ -62,3 +62,25 @@ tasks:
     cmds:
       - 'rm -rf {{.VENV_DIR}}'
       - 'echo "🧹 Removed virtual environment"'
+
+  format:
+    desc: "Run black and ruff to format code"
+    deps: [venv]
+    cmds:
+      - '{{.VENV_DIR}}/bin/black .'
+      - '{{.VENV_DIR}}/bin/ruff check . --fix'
+      - 'echo "🎨 Code formatted"'
+
+  lint:
+    desc: "Run ruff and mypy for linting and static checks"
+    deps: [venv]
+    cmds:
+      - '{{.VENV_DIR}}/bin/ruff check .'
+      - '{{.VENV_DIR}}/bin/mypy .'
+      - 'echo "🧹 Lint checks passed"'
+
+  test:
+    desc: "Run pytest"
+    deps: [venv]
+    cmds:
+      - '{{.VENV_DIR}}/bin/pytest'
