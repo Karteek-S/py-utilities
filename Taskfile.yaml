@@ -1,26 +1,39 @@
 version: '3'
 
+# === Variables ===
 vars:
   PYTHON_VERSION: '{{.PYTHON_VERSION | default "3.10.11"}}'
   VENV_DIR: '{{.VENV_DIR | default ".venv"}}'
   REQUIREMENTS: '{{.REQUIREMENTS | default "requirements.txt"}}'
   PYTHON: sh:pyenv which python || echo "python3"
 
+# === Tasks ===
 tasks:
+  # 🔧 Default: show list of available tasks
   default:
+    desc: "List available tasks"
     cmds:
       - task --list
     silent: true
+
+  # 🛠️ Setup (alias + internals)
+  setup:
+    desc: "Initialize Python environment using pyenv and venv"
+    deps: [setup:init]
+
+  setup:init:
+    desc: "Full setup: pyenv, version check, venv"
+    deps: [setup:pyenv, setup:check, setup:venv]
     internal: true
 
-  pyenv:local:
+  setup:pyenv:
     desc: "Set local pyenv Python version"
     cmds:
       - 'pyenv local {{.PYTHON_VERSION}}'
       - 'echo "✅ Set local Python version to {{.PYTHON_VERSION}}"'
     internal: true
 
-  pyenv:check:
+  setup:check:
     desc: "Check if the required pyenv version is installed"
     cmds:
       - |
@@ -32,9 +45,9 @@ tasks:
         fi
     internal: true
 
-  venv:
+  setup:venv:
     desc: "Create virtual environment if it doesn't exist"
-    deps: [pyenv:check]
+    deps: [setup:check]
     cmds:
       - |
         if [ ! -d "{{.VENV_DIR}}" ]; then
@@ -45,42 +58,72 @@ tasks:
         fi
     internal: true
 
-  install:
+  # 📦 Dependencies
+  deps:install:
     desc: "Install dependencies into venv"
-    deps: [venv]
+    deps: [setup:venv]
     cmds:
       - '{{.VENV_DIR}}/bin/pip install --upgrade pip'
       - '{{.VENV_DIR}}/bin/pip install -r {{.REQUIREMENTS}}'
       - 'echo "✅ Dependencies installed"'
+    internal: true
 
-  setup:
-    desc: "Run pyenv setup, check, and create venv"
-    deps: [pyenv:local, venv]
+  # 🎨 Code Quality
+  quality:format:
+    desc: "Run black and ruff to format code"
+    deps: [setup:venv]
+    cmds:
+      - '{{.VENV_DIR}}/bin/black .'
+      - '{{.VENV_DIR}}/bin/ruff check . --fix'
+      - 'echo "🎨 Code formatted"'
+    internal: true
 
-  venv:clean:
+  quality:lint:
+    desc: "Run ruff and mypy for linting and static checks"
+    deps: [setup:venv]
+    cmds:
+      - '{{.VENV_DIR}}/bin/ruff check .'
+      - '{{.VENV_DIR}}/bin/mypy .'
+      - 'echo "🧹 Lint checks passed"'
+    internal: true
+
+  quality:check:
+    desc: "Run lint and test tasks"
+    deps: [quality:lint, test:run]
+    internal: true
+
+  # 🧪 Testing
+  test:run:
+    desc: "Run pytest"
+    deps: [setup:venv]
+    cmds:
+      - '{{.VENV_DIR}}/bin/pytest'
+    internal: true
+
+  # 🧼 Cleanup
+  clean:venv:
     desc: "Remove the virtual environment"
     cmds:
       - 'rm -rf {{.VENV_DIR}}'
       - 'echo "🧹 Removed virtual environment"'
 
+  # 🏷 Public Aliases (with helpful descriptions)
+  install:
+    desc: "Install dependencies into virtual environment"
+    deps: [deps:install]
+
   format:
-    desc: "Run black and ruff to format code"
-    deps: [venv]
-    cmds:
-      - '{{.VENV_DIR}}/bin/black .'
-      - '{{.VENV_DIR}}/bin/ruff check . --fix'
-      - 'echo "🎨 Code formatted"'
+    desc: "Format Python code using black and ruff"
+    deps: [quality:format]
 
   lint:
-    desc: "Run ruff and mypy for linting and static checks"
-    deps: [venv]
-    cmds:
-      - '{{.VENV_DIR}}/bin/ruff check .'
-      - '{{.VENV_DIR}}/bin/mypy .'
-      - 'echo "🧹 Lint checks passed"'
+    desc: "Run ruff and mypy for linting and type checks"
+    deps: [quality:lint]
+
+  check:
+    desc: "Run all quality checks: lint and test"
+    deps: [quality:check]
 
   test:
-    desc: "Run pytest"
-    deps: [venv]
-    cmds:
-      - '{{.VENV_DIR}}/bin/pytest'
+    desc: "Run pytest test suite"
+    deps: [test:run]
