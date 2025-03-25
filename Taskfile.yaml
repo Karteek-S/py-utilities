@@ -1,0 +1,64 @@
+version: '3'
+
+vars:
+  PYTHON_VERSION: '{{.PYTHON_VERSION | default "3.10.11"}}'
+  VENV_DIR: '{{.VENV_DIR | default ".venv"}}'
+  REQUIREMENTS: '{{.REQUIREMENTS | default "requirements.txt"}}'
+  PYTHON: sh:pyenv which python || echo "python3"
+
+tasks:
+  default:
+    cmds:
+      - task --list
+    silent: true
+    internal: true
+
+  pyenv:local:
+    desc: "Set local pyenv Python version"
+    cmds:
+      - 'pyenv local {{.PYTHON_VERSION}}'
+      - 'echo "✅ Set local Python version to {{.PYTHON_VERSION}}"'
+    internal: true
+
+  pyenv:check:
+    desc: "Check if the required pyenv version is installed"
+    cmds:
+      - |
+        if pyenv versions --bare | grep -qx '{{.PYTHON_VERSION}}'; then
+          echo "✅ Python {{.PYTHON_VERSION}} is available via pyenv"
+        else
+          echo "❌ Python {{.PYTHON_VERSION}} not installed in pyenv"
+          exit 1
+        fi
+    internal: true
+
+  venv:
+    desc: "Create virtual environment if it doesn't exist"
+    deps: [pyenv:check]
+    cmds:
+      - |
+        if [ ! -d "{{.VENV_DIR}}" ]; then
+          {{.PYTHON}} -m venv {{.VENV_DIR}}
+          echo "✅ Created virtual environment at {{.VENV_DIR}}"
+        else
+          echo "ℹ️ Virtual environment already exists at {{.VENV_DIR}}"
+        fi
+    internal: true
+
+  install:
+    desc: "Install dependencies into venv"
+    deps: [venv]
+    cmds:
+      - '{{.VENV_DIR}}/bin/pip install --upgrade pip'
+      - '{{.VENV_DIR}}/bin/pip install -r {{.REQUIREMENTS}}'
+      - 'echo "✅ Dependencies installed"'
+
+  setup:
+    desc: "Run pyenv setup, check, and create venv"
+    deps: [pyenv:local, venv]
+
+  venv:clean:
+    desc: "Remove the virtual environment"
+    cmds:
+      - 'rm -rf {{.VENV_DIR}}'
+      - 'echo "🧹 Removed virtual environment"'
