@@ -16,52 +16,47 @@ tasks:
       - task --list
     silent: true
 
-  # 🛠️ Setup (alias + internals)
-  setup:
-    desc: "Initialize Python environment using pyenv and venv"
-    deps: [setup:init]
-
-  setup:init:
-    desc: "Full setup: pyenv, version check, venv"
-    deps: [setup:pyenv, setup:check, setup:venv]
+  # 🛠️ Setup
+  # Core check for all setups
+  setup:check:core:
+    desc: "Check pyenv and required Python version"
+    cmds:
+      - '{{.TASKFILE_DIR}}/Scripts/setups/check-core.sh "{{.PYTHON_VERSION}}"'
     internal: true
 
-  setup:pyenv:
-    desc: "Set local pyenv Python version"
+  # For downstream tasks: require venv
+  setup:check:require:
+    desc: "Check that .venv exists and verify python versions"
+    cmds:
+      - '{{.TASKFILE_DIR}}/Scripts/setups/check-require.sh "{{.PYTHON_VERSION}}" "{{.VENV_DIR}}"'
+    internal: true
+
+  # For setup:init: venv must not already exist
+  setup:check:init:
+    desc: "Check that .venv does NOT exist (safe to create)"
+    cmds:
+      - '{{.TASKFILE_DIR}}/Scripts/setups/check-init.sh "{{.VENV_DIR}}"'
+    internal: true
+
+  # Publicly used check task (for install/lint/test/etc)
+  setup:check:
+    desc: "Validate Python version and venv presence"
+    deps: [setup:check:core, setup:check:require]
+    internal: true
+
+  # Internal init
+  setup:init:
+    desc: "Initialize .python-version and venv (if safe)"
+    deps: [setup:check:core, setup:check:init]
     cmds:
       - 'pyenv local {{.PYTHON_VERSION}}'
-      - 'echo "✅ Set local Python version to {{.PYTHON_VERSION}}"'
-    internal: true
-
-  setup:check:
-    desc: "Check if the required pyenv version is installed"
-    cmds:
-      - |
-        if pyenv versions --bare | grep -qx '{{.PYTHON_VERSION}}'; then
-          echo "✅ Python {{.PYTHON_VERSION}} is available via pyenv"
-        else
-          echo "❌ Python {{.PYTHON_VERSION}} not installed in pyenv"
-          exit 1
-        fi
-    internal: true
-
-  setup:venv:
-    desc: "Create virtual environment if it doesn't exist"
-    deps: [setup:check]
-    cmds:
-      - |
-        if [ ! -d "{{.VENV_DIR}}" ]; then
-          {{.PYTHON}} -m venv {{.VENV_DIR}}
-          echo "✅ Created virtual environment at {{.VENV_DIR}}"
-        else
-          echo "ℹ️ Virtual environment already exists at {{.VENV_DIR}}"
-        fi
+      - '{{.PYTHON}} -m venv {{.VENV_DIR}}'
     internal: true
 
   # 📦 Dependencies
   deps:install:
     desc: "Install dependencies into venv"
-    deps: [setup:venv]
+    deps: [setup:check]
     cmds:
       - '{{.VENV_DIR}}/bin/pip install --upgrade pip'
       - '{{.VENV_DIR}}/bin/pip install -r {{.REQUIREMENTS}}'
@@ -71,7 +66,7 @@ tasks:
   # 🎨 Code Quality
   quality:format:
     desc: "Run black and ruff to format code"
-    deps: [setup:venv]
+    deps: [setup:check]
     cmds:
       - '{{.VENV_DIR}}/bin/black .'
       - '{{.VENV_DIR}}/bin/ruff check . --fix'
@@ -80,7 +75,7 @@ tasks:
 
   quality:lint:
     desc: "Run ruff and mypy for linting and static checks"
-    deps: [setup:venv]
+    deps: [setup:check]
     cmds:
       - '{{.VENV_DIR}}/bin/ruff check .'
       - '{{.VENV_DIR}}/bin/mypy .'
@@ -95,7 +90,7 @@ tasks:
   # 🧪 Testing
   test:run:
     desc: "Run pytest"
-    deps: [setup:venv]
+    deps: [setup:check]
     cmds:
       - '{{.VENV_DIR}}/bin/pytest'
     internal: true
@@ -107,7 +102,24 @@ tasks:
       - 'rm -rf {{.VENV_DIR}}'
       - 'echo "🧹 Removed virtual environment"'
 
+  clean:pycache:
+    desc: "Remove Python bytecode and __pycache__"
+    cmds:
+      - 'find . -type d -name "__pycache__" -exec rm -rf {} +'
+      - 'find . -type f -name "*.pyc" -delete'
+      - 'echo "🧹 Removed __pycache__ and .pyc files"'
+
+  clean:dist:
+    desc: "Remove dist and build artifacts"
+    cmds:
+      - 'rm -rf dist/ build/ *.egg-info'
+      - 'echo "🧹 Removed dist and build folders"'
+
   # 🏷 Public Aliases (with helpful descriptions)
+  setup:
+    desc: "Set up Python environment (pyenv + venv)"
+    deps: [setup:init]
+
   install:
     desc: "Install dependencies into virtual environment"
     deps: [deps:install]
@@ -127,3 +139,7 @@ tasks:
   test:
     desc: "Run pytest test suite"
     deps: [test:run]
+
+  clean:
+    desc: "Run all cleanups: venv, pycache, dist"
+    deps: [clean:venv, clean:dist]
